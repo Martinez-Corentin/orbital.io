@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>ORBITAL.IO (WebGL)</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://pixijs.download/v7.x/pixi.min.js"></script>
+</head>
+<body>
+
+<div id="game-over-screen">
+    <div id="go-title">FIN DE PARTIE</div>
+    <div id="go-sub">...</div>
+    <div id="go-bonus" style="color:#2ecc71; margin-top:10px; display:none;">BONUS DE MASSE OBTENU !</div>
+</div>
+
+<div id="pause-menu" class="hidden">
+    <h1>PAUSE</h1>
+    <button class="menu-btn" onclick="togglePause()">REPRENDRE</button>
+    <button class="menu-btn red" onclick="location.reload()">QUITTER</button>
+</div>
+
+<div id="zone-alert">ATTENTION : LA ZONE RÉTRÉCIT !</div>
+<div id="hud-top-center">SURVIVANTS: <span id="alive-count" style="color:#ff0055">50</span></div>
+
+<div id="hud-top-right" class="hud hidden">
+    <div class="lb-header">TOP CLASSEMENT</div>
+    <div id="leaderboard"></div>
+</div>
+
+<div id="hud-bottom-left" class="hud hidden">
+    <img id="mini-skin" src="" onerror="this.style.display='none'">
+    <div id="mini-skin-fallback" class="fallback-preview" style="display:none; width:60px; height:60px;"></div>
+    <div>
+        <div>MASSE: <span id="mass-display" style="color:#00d2ff">0</span></div>
+        <div class="hud-controls">ESPACE = SPLIT | W = EJECT | ECHAP = PAUSE</div>
+    </div>
+</div>
+
+<div id="ui-container">
+    <div id="start-panel">
+        <h1>ORBITAL<span>.io</span></h1>
+
+        <div class="mode-selector">
+            <div id="btn-ffa" class="mode-btn active" onclick="setMode('FFA')">INFINI (FFA)</div>
+            <div id="btn-br" class="mode-btn" onclick="setMode('BR')">BATTLE ROYALE</div>
+        </div>
+
+        <div id="br-bonus-display" style="color:#2ecc71; font-size:14px; margin-bottom:10px; display:none;">
+            🏆 Bonus Top 1 : Départ avec +<span id="bonus-val">0</span> Masse
+        </div>
+
+        <div class="skin-selector">
+            <button class="nav-btn" onclick="changeSkin(-1)">&#10094;</button>
+            <div style="flex-grow:1; position: relative;">
+                <div class="preview-circle">
+                    <img id="preview-img" src="" onerror="this.style.display='none'; document.getElementById('preview-fallback').style.display='block'">
+                    <div id="preview-fallback" class="fallback-preview" style="display:none;"></div>
+                    <div id="lock-overlay">🔒</div>
+                </div>
+                <div id="skin-name">Skin</div>
+                <div id="skin-req" style="font-size:12px; color:#aaa;">Requis: 0</div>
+            </div>
+            <button class="nav-btn" onclick="changeSkin(1)">&#10095;</button>
+        </div>
+
+        <input type="text" id="nickname" value="Player" maxlength="12" placeholder="Ton Pseudo">
+        <br>
+        <button id="play-btn" onclick="startGame()">JOUER</button>
+    </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
