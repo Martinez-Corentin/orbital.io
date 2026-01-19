@@ -1,5 +1,5 @@
 const BASE_MAP_SIZE = 6000;
-const TOTAL_BOTS_FFA = 40;
+const TOTAL_BOTS_FFA = 50;
 const TOTAL_BOTS_BR = 50;
 const BONUS_PER_WIN = 50;
 
@@ -7,7 +7,9 @@ const MIN_MASS_SPLIT = 36;
 const MIN_MASS_EJECT = 36;
 const EJECT_MASS_LOSS = 16;
 const EJECT_MASS_GAIN = 12;
-const MERGE_TIME_BASE = 10;
+
+// Temps de regroupement rapide
+const MERGE_TIME_BASE = 2;
 
 const app = new PIXI.Application({
     resizeTo: window,
@@ -18,14 +20,30 @@ const app = new PIXI.Application({
 });
 document.body.appendChild(app.view);
 
+// COUCHES
 const starsLayer = new PIXI.Container();
 const gameLayer = new PIXI.Container();
 const borderLayer = new PIXI.Container();
+const uiLayer = new PIXI.Container();
 
 app.stage.addChild(starsLayer);
 app.stage.addChild(gameLayer);
 gameLayer.addChild(borderLayer);
+app.stage.addChild(uiLayer);
+
 gameLayer.sortableChildren = true;
+
+// -- MINIMAP SETUP --
+const minimapContainer = new PIXI.Container();
+const minimapBg = new PIXI.Graphics();
+const minimapDots = new PIXI.Graphics();
+minimapContainer.addChild(minimapBg);
+minimapContainer.addChild(minimapDots);
+minimapContainer.x = 20;
+minimapContainer.y = 20;
+uiLayer.addChild(minimapContainer);
+
+const MINIMAP_SIZE = 120;
 
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 let audioCtx = new AudioContext();
@@ -314,7 +332,10 @@ class Entity {
         if (this.mass > 200) this.mass -= this.mass * 0.001 * dt * 2;
 
         let baseSpeed = 700 * Math.pow(this.mass, -0.4);
-        this.vx *= 0.9; this.vy *= 0.9;
+
+        // MODIF: FRICTION FORTE pour un arrêt "collé"
+        // Le 0.85 permet de glisser un tout petit peu mais de s'arrêter net à côté
+        this.vx *= 0.85; this.vy *= 0.85;
         this.eatDistortion *= 0.9;
 
         if (!this.canMerge) {
@@ -394,13 +415,22 @@ function splitEntity(cell) {
 
     let splitCell = new Entity(cell.x, cell.y, cell.isPlayer, cell.name, newMass, cell.skin);
     let angle = cell.angle;
-    let dist = cell.getRadius() * 2;
+
+    // MODIF: Distance d'apparition réduite.
+    // Au lieu d'apparaître complètement dehors (r*2), elle apparaît juste au bord (r),
+    // créant un chevauchement initial pour éviter le "trou".
+    let dist = cell.getRadius();
+
     splitCell.x += Math.cos(angle) * dist;
     splitCell.y += Math.sin(angle) * dist;
-    splitCell.vx = Math.cos(angle) * 800;
-    splitCell.vy = Math.sin(angle) * 800;
 
-    let mTime = MERGE_TIME_BASE + (newMass * 0.01);
+    // MODIF: Vitesse réduite (1000 -> 750)
+    // Pour ne pas qu'elle parte trop loin malgré la friction.
+    splitCell.vx = Math.cos(angle) * 750;
+    splitCell.vy = Math.sin(angle) * 750;
+
+    let mTime = MERGE_TIME_BASE + (newMass * 0.002);
+
     cell.canMerge = false; cell.mergeTimer = mTime; cell.maxMergeTime = mTime;
     splitCell.canMerge = false; splitCell.mergeTimer = mTime; splitCell.maxMergeTime = mTime;
 
@@ -447,6 +477,7 @@ function startGame() {
     document.getElementById('hud-bottom-left').classList.remove('hidden');
     document.getElementById('game-over-screen').style.display = 'none';
     document.getElementById('pause-menu').classList.add('hidden');
+    minimapContainer.visible = true;
 
     currentMapSize = BASE_MAP_SIZE;
     brShrinkTimer = 0;
@@ -460,7 +491,9 @@ function startGame() {
         document.getElementById('hud-top-center').style.display = 'block';
         document.getElementById('zone-alert').style.display = 'block';
         setTimeout(() => document.getElementById('zone-alert').style.display = 'none', 3000);
-    } else document.getElementById('hud-top-center').style.display = 'none';
+    } else document.getElementById('hud-top-center').style.display = 'block';
+
+    document.getElementById('hud-top-center').style.top = "150px";
 
     const nameInput = document.getElementById('nickname').value.trim() || "Joueur";
     let mySkin = SKINS[skinIndex];
@@ -501,6 +534,7 @@ function spawnBot() {
 function endGame(win) {
     gameRunning = false;
     document.getElementById('game-over-screen').style.display = 'block';
+    minimapContainer.visible = false;
     bgMusic.pause();
     if(win) { playSynthSound('win'); } else { playSynthSound('loose'); }
 
@@ -533,8 +567,8 @@ app.ticker.add((delta) => {
         brShrinkTimer += dt;
         if (brShrinkTimer > 10 && currentMapSize > 500) currentMapSize -= 20 * dt;
     } else {
-        let spawnLimit = (playerTotalMass > 2000) ? 0 : TOTAL_BOTS_FFA;
-        if (entities.length < spawnLimit + myCells.length && Math.random() < 0.05) spawnBot();
+        const currentBots = entities.filter(e => !e.isPlayer).length;
+        if (currentBots < TOTAL_BOTS_FFA && Math.random() < 0.05) spawnBot();
         currentMapSize = BASE_MAP_SIZE;
     }
 
@@ -543,13 +577,37 @@ app.ticker.add((delta) => {
         myCells.forEach(c => { avgX += c.x * c.mass; avgY += c.y * c.mass; totalM += c.mass; });
         let tX = avgX / totalM; let tY = avgY / totalM;
         let totalRadius = Math.sqrt(totalM * 100);
-        let tZ = 1000 / (totalRadius * 1.8 + 400);
+
+        // DEZOOM AGRESSIF
+        let zoomBase = 0.9;
+        let tZ = zoomBase / (1 + totalRadius * 0.003);
 
         camera.tz += (tZ - camera.tz) * 0.05; camera.z = camera.tz;
         camera.x += (tX - camera.x) * 0.1; camera.y += (tY - camera.y) * 0.1;
 
         if (gameMode === 'FFA' && totalM > recordMass) {
             recordMass = Math.floor(totalM); localStorage.setItem(KEY_MAX_MASS, recordMass);
+        }
+
+        // MINIMAP UPDATE
+        minimapBg.clear();
+        minimapBg.lineStyle(2, 0xffffff);
+        minimapBg.beginFill(0x000000, 0.6);
+        minimapBg.drawRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+        minimapBg.endFill();
+
+        minimapDots.clear();
+        minimapDots.beginFill(0x00ffcc);
+        let mapX = (tX + BASE_MAP_SIZE/2) / BASE_MAP_SIZE * MINIMAP_SIZE;
+        let mapY = (tY + BASE_MAP_SIZE/2) / BASE_MAP_SIZE * MINIMAP_SIZE;
+        minimapDots.drawCircle(mapX, mapY, 4);
+        minimapDots.endFill();
+
+        if(gameMode === 'BR') {
+            let zoneSize = (currentMapSize / BASE_MAP_SIZE) * MINIMAP_SIZE;
+            let offset = (MINIMAP_SIZE - zoneSize) / 2;
+            minimapDots.lineStyle(1, 0xff0055);
+            minimapDots.drawRect(offset, offset, zoneSize, zoneSize);
         }
     }
 
@@ -641,8 +699,10 @@ app.ticker.add((delta) => {
                         if(e.isPlayer) playSynthSound('eat');
                         other.dead = true;
                     } else if (!e.canMerge || !other.canMerge) {
+                        // COLLISION DOUCE (Glissement)
                         let a = Math.atan2(e.y - other.y, e.x - other.x);
-                        let f = 200 * dt;
+                        // Force de repousse un peu réduite pour qu'ils restent proches
+                        let f = 120 * dt;
                         e.x += Math.cos(a)*f; e.y += Math.sin(a)*f;
                         other.x -= Math.cos(a)*f; other.y -= Math.sin(a)*f;
                     }
@@ -677,7 +737,7 @@ app.ticker.add((delta) => {
         document.getElementById('alive-count').innerText = unique;
         document.getElementById('mass-display').innerText = Math.floor(playerTotalMass);
 
-        if (unique === 1 && myCells.length > 0) endGame(true);
+        if (unique === 1 && myCells.length > 0 && gameMode === 'BR') endGame(true);
         if (myCells.length === 0 && gameRunning) endGame(false);
         lbTimer = 0;
     }
